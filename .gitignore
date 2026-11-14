@@ -1,0 +1,31 @@
+# 依赖与构建产物
+node_modules/
+dist/
+output/
+
+# 本地工具与偏好
+.commandcode/
+
+# 运行时状态（题库 data/library.json 需要提交）
+data/progress.json
+data/last-puzzle.json
+data/*.tmp
+
+# 原始截图（测试用图保留在 scripts/fixtures/）
+1658de38-b53b-4c3c-84c2-2fe877f27418.png
+
+# 环境变量与密钥
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+id_rsa*
+
+# 系统与日志
+.DS_Store
+Thumbs.db
+*.log

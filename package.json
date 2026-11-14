@@ -1,0 +1,33 @@
+{
+  "name": "futoshiki-puzzle",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "不等式（Futoshiki）逻辑谜题：拉丁方填数，格间大小号约束。",
+  "puzzle": {
+    "port": 5193,
+    "comment": "dev server 端口（vite.config.ts / scripts/dev.mjs / scripts/ui-check.mjs 都读这里，是唯一来源）"
+  },
+  "scripts": {
+    "dev": "vite",
+    "start": "node scripts/dev.mjs",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "gen": "node scripts/gen-puzzles.mjs",
+    "check": "node scripts/check.mjs",
+    "ui-check": "node scripts/ui-check.mjs",
+    "verify": "node scripts/verify-game.mjs",
+    "verify-import": "node scripts/verify-import.mjs",
+    "import-puzzle": "node scripts/import-puzzle.mjs",
+    "audit": "node scripts/audit-logic.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12",
+    "playwright-core": "^1.64.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.6"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true
+  }
+}
