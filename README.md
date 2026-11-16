@@ -39,7 +39,33 @@ npm start
 
 ## 题目导入
 
-命令行导入（写入 `data/library.json`，自动校验唯一解与逻辑可解性）：
+### 图片识别（自动识别 + 预览 + 入库）
+
+```bash
+# 只识别、预览题面（默认不写盘）
+npm run import-image -- 题图.png
+
+# 校验唯一解后写入 data/library.json
+npm run import-image -- 题图.png --name "识图导入 · 9×9" --append --verify
+
+# 人工修正识别错误：r行c列=数字 / h行e边=大小号 / v行e边=大小号（1 基）
+npm run import-image -- 题图.png --map r1c1=8,h2e3=1 --append
+```
+
+| 参数 | 说明 |
+|------|------|
+| `--name 名称` / `--id ID` | 题库名称 / 指定 id（覆盖同 id 条目） |
+| `--append` | 写入 `data/library.json`；不加只预览 |
+| `--verify` | 唯一解校验（`--append` 时默认也要求唯一解） |
+| `--allow-multi` | 允许有多解的题目入库 |
+| `--map 修正` | `r3c5=2` 改格子；`h3e2=1` 改横向大小号；`v3e2=2` 改竖向大小号（1 基，0 清除） |
+| `--max-nodes N` | 解计数搜索节点上限 |
+| `--out FILE` | 题库文件（默认 `data/library.json`） |
+| `--json` | 输出机器可读结果 |
+
+识读使用的是与浏览器「导入」面板同一份 `src/game/image-import.ts`（Playwright 打开本机 Edge/Chrome 解码图片）。支持 **4×4–12×12、数字 1–n 的黑白线框题图**；更大尺寸或字母题（如 A–E 表示 10–14）不在当前数据模型内，请改用文本导入。
+
+### 文本 / 其它格式
 
 ```bash
 npm run import-puzzle -- --text scripts/fixtures/9x9.txt --name "九阶不等式（导入）"
@@ -47,7 +73,7 @@ npm run import-puzzle -- --image path/to/board.jpg --dry-run
 ```
 
 - 文本支持三种格式：`size / givens / horizontal / vertical` 三段表格、`givens|relations` 紧凑串、JSON
-- 截图识别支持常见的黑白线框题图；`--dry-run` 只解析不写盘
+- `--dry-run` 只解析不写盘；`--allow-multi` 允许多解
 - 浏览器左侧「导入」面板同样支持文本粘贴与图片上传，识别后可“在编辑器中修正”
 - 导入后刷新页面即可在题库最前面看到新题
 
@@ -97,6 +123,7 @@ npm run gen       # 重新生成题库
 npm run check     # 审计题库
 npm run verify    # 参考解、逻辑回放与交互验证
 npm run verify-import  # 文本/图片导入与浏览器导入面板回归测试
-npm run import-puzzle  # 导入题目（--text / --image）
+npm run import-image   # 图片识别导入（预览 / --append / --verify / --map）
+npm run import-puzzle  # 文本或图片导入题目（--text / --image）
 npm run audit     # 逐题审计逻辑解题
 ```

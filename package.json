@@ -18,6 +18,7 @@
     "ui-check": "node scripts/ui-check.mjs",
     "verify": "node scripts/verify-game.mjs",
     "verify-import": "node scripts/verify-import.mjs",
+    "import-image": "node scripts/import-image.mjs",
     "import-puzzle": "node scripts/import-puzzle.mjs",
     "audit": "node scripts/audit-logic.mjs"
   },
