@@ -8,10 +8,14 @@
 import type { Difficulty } from '../core/types'
 import {
   decodeBoard,
+  encodedValueCount,
   encodeBoard,
   encodeCells,
   edgeCount,
   horizontalEdgeIndex,
+  isMultiValueEncoded,
+  MAX_SIZE,
+  MIN_SIZE,
   verticalEdgeIndex,
   type FutoPuzzle,
 } from './types.ts'
@@ -43,8 +47,6 @@ export interface ParseOptions {
   maxSize?: number
 }
 
-const MIN_SIZE = 4
-const MAX_SIZE = 12
 const DEFAULT_MAX_NODES = 1_500_000
 
 const EMPTY_TOKENS = new Set(['.', '0', '_', '·'])
@@ -292,6 +294,39 @@ function draftFromBoard(
   return { n, givens: decoded.givens, relations: decoded.relations, name: options.name, id: options.id }
 }
 
+/**
+ * 解析 `givens|relations` 紧凑串。
+ *
+ * - 旧格式：每个数值一个字符（0–9），如 `0030...|210102...`
+ * - 大数值格式：`v2:` 前缀 + 逗号分隔，如 `v2:0,0,12,...|0,1,...`
+ */
+function draftFromCompact(
+  tight: string,
+  options: ParseOptions,
+  errors: string[],
+): Draft | null {
+  const multi = isMultiValueEncoded(tight)
+  const body = multi ? tight.slice(tight.indexOf(':') + 1) : tight
+  const parts = body.split('|')
+  if (parts.length !== 2) {
+    errors.push('紧凑串应形如 givens|relations')
+    return null
+  }
+  const countOf = (text: string): number => (multi ? text.split(',').length : text.length)
+  const givensCount = countOf(parts[0]!)
+  const n = Math.round(Math.sqrt(givensCount))
+  if (n < 1 || n * n !== givensCount) {
+    errors.push(`紧凑串预填数量 ${givensCount} 不是完全平方数`)
+    return null
+  }
+  const relationCount = countOf(parts[1]!)
+  if (relationCount !== edgeCount(n)) {
+    errors.push(`紧凑串关系数量 ${relationCount}，应为 ${edgeCount(n)}`)
+    return null
+  }
+  return draftFromBoard(tight, n, options, errors)
+}
+
 export function parsePuzzleText(text: string, options: ParseOptions = {}): ParsedPuzzle {
   const errors: string[] = []
   const warnings: string[] = []
@@ -335,30 +370,34 @@ export function parsePuzzleText(text: string, options: ParseOptions = {}): Parse
         id: typeof record.id === 'string' ? record.id : options.id,
       }
     } else if (typeof record.givens === 'string' && typeof record.relations === 'string') {
-      const n = width ?? Math.round(Math.sqrt(record.givens.length))
-      draft = {
-        n,
-        givens: Array.from(record.givens, (c) => Number(c) || 0),
-        relations: Array.from(record.relations, (c) => Number(c) || 0),
-        name: typeof record.name === 'string' ? record.name : options.name,
-        id: typeof record.id === 'string' ? record.id : options.id,
+      const givensText = record.givens
+      const relationsText = record.relations
+      const givensCount = encodedValueCount(givensText)
+      const n = width ?? Math.round(Math.sqrt(givensCount))
+      const countedRelations = encodedValueCount(relationsText)
+      if (!Number.isInteger(n) || n < 1 || n * n !== givensCount) {
+        errors.push(`JSON givens 数量 ${givensCount} 与尺寸 ${n} 不匹配`)
+      } else if (countedRelations !== edgeCount(n)) {
+        errors.push(`JSON relations 数量 ${countedRelations}，应为 ${edgeCount(n)}`)
+      } else {
+        draft = draftFromBoard(
+          `${givensText}|${relationsText}`,
+          n,
+          {
+            ...options,
+            name: typeof record.name === 'string' ? record.name : options.name,
+            id: typeof record.id === 'string' ? record.id : options.id,
+          },
+          errors,
+        )
       }
     } else {
       errors.push('JSON 需要 board+width，或 givens+relations')
     }
   } else {
-    const compact = /^([0-9]+)\|([0-9]+)$/.exec(raw.replace(/\s+/g, ''))
-    if (compact) {
-      const givens = compact[1]!
-      const relationText = compact[2]!
-      const n = Math.round(Math.sqrt(givens.length))
-      if (n * n !== givens.length) {
-        errors.push(`紧凑串预填长度 ${givens.length} 不是完全平方数`)
-      } else if (relationText.length !== edgeCount(n)) {
-        errors.push(`紧凑串关系长度 ${relationText.length}，应为 ${edgeCount(n)}`)
-      } else {
-        draft = draftFromBoard(`${givens}|${relationText}`, n, options, errors)
-      }
+    const tight = raw.replace(/\s+/g, '')
+    if (isMultiValueEncoded(tight) || /^[0-9]+\|[0-9]+$/.test(tight)) {
+      draft = draftFromCompact(tight, options, errors)
     } else {
       draft = tableParse(raw.split(/\r?\n/), options, errors)
     }

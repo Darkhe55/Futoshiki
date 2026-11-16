@@ -59,7 +59,9 @@ export function renderBoard(
       content += `<circle class="ft-given-ring" cx="${(x + inner / 2).toFixed(2)}" cy="${(y + inner / 2).toFixed(2)}" r="${(inner * 0.42).toFixed(2)}" />`
     }
     if (v !== 0) {
-      content += `<text class="ft-value" x="${(x + inner / 2).toFixed(2)}" y="${(y + inner / 2 + cell * 0.02).toFixed(2)}" style="font-size:${(cell * 0.42).toFixed(2)}px">${v}</text>`
+      // 两位数（10–15）用更小的字号，避免撑出格子
+      const fontSize = cell * (v >= 10 ? 0.32 : 0.42)
+      content += `<text class="ft-value" x="${(x + inner / 2).toFixed(2)}" y="${(y + inner / 2 + cell * 0.02).toFixed(2)}" style="font-size:${fontSize.toFixed(2)}px">${v}</text>`
     }
     if (bad.has(i)) {
       content += `<rect class="ft-error" x="${(x + 1.1).toFixed(2)}" y="${(y + 1.1).toFixed(2)}" width="${(inner - 2.2).toFixed(2)}" height="${(inner - 2.2).toFixed(2)}" rx="${(cell * 0.1).toFixed(2)}" />`

@@ -8,6 +8,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { encodeBoard } from '../../src/game/types.ts'
 
 function sniffMime(buf, file) {
   if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg'
@@ -96,7 +97,7 @@ export async function recognizeImageFile(file) {
       return window.FutoImage.recognizeBoard(image)
     }, url)
 
-    const board = `${result.givens.join('')}|${result.relations.join('')}`
+    const board = encodeBoard(result.givens, result.relations)
     return {
       text: board,
       warnings: [

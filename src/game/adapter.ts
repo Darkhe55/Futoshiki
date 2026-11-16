@@ -45,12 +45,30 @@ const meta = {
   customIdPrefix: 'futoshiki-custom-',
   customMinW: 4,
   customMinH: 4,
-  customMaxW: 9,
-  customMaxH: 9,
+  customMaxW: 15,
+  customMaxH: 15,
   targetKind: 'cell' as const,
 }
 
-const VALUE_CYCLE: Array<number | null> = [null, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+/** 点击循环：0（空）→ 1 … n；支持到 15 阶，>9 的数同样可循环选中 */
+const VALUE_CYCLE: Array<number | null> = [
+  null,
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15,
+]
 
 function edgeSign(v: number | null, dir: 'h' | 'v'): string {
   if (v !== 1 && v !== 2) return ''
@@ -145,7 +163,7 @@ const custom: CustomSupport = {
     recognize: (image, name) => {
       try {
         const result = recognizeBoard(image)
-        const parsed = parsePuzzleText(`${result.givens.join('')}|${result.relations.join('')}`, {
+        const parsed = parsePuzzleText(encodeBoard(result.givens, result.relations), {
           name,
         })
         const candidate = importCandidate(parsed, name)

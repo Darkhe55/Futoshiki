@@ -31,7 +31,7 @@ import {
   parsePuzzleText,
   toLibraryEntry,
 } from '../src/game/import.ts'
-import { horizontalEdgeIndex, verticalEdgeIndex } from '../src/game/types.ts'
+import { horizontalEdgeIndex, verticalEdgeIndex, encodeBoard } from '../src/game/types.ts'
 
 function usage(msg) {
   if (msg) console.error(`\n[import] ${msg}`)
@@ -129,6 +129,11 @@ function applyMaps(puzzle, tokens) {
   return null
 }
 
+/** 数值列表转可读字符串：有 >9 的值时用逗号分隔，避免两位数字看串 */
+function formatValues(values) {
+  return values.some((v) => v > 9) ? values.join(',') : values.join('')
+}
+
 function readLibrary(file) {
   try {
     const data = JSON.parse(readFileSync(file, 'utf8'))
@@ -159,8 +164,8 @@ try {
   if (!options.json) {
     console.error(`[import] 图片识别失败：${msg}`)
     console.error(
-      '[import] 提示：不等式识图支持 4×4–12×12、数字 1–n 的黑白线框题图；' +
-        '大尺寸/字母题（如 A–E）请用浏览器「导入 → 文本」或 --text 导入。',
+      '[import] 提示：不等式识图支持 4×4–15×15、值 1–n 的黑白线框题图（>9 可用 A–F 或两位数字表示）；' +
+        '其它情况请用浏览器「导入 → 文本」或 --text 导入。',
     )
   } else {
     console.log(JSON.stringify({ ok: false, errors: [msg] }, null, 2))
@@ -188,7 +193,7 @@ if (options.maps.length) {
   console.log(`[import] --map 应用了 ${options.maps.length} 处人工修正`)
 }
 
-const board = `${puzzle.givens.join('')}|${puzzle.relations.join('')}`
+const board = encodeBoard(puzzle.givens, puzzle.relations)
 const parsed = parsePuzzleText(board, { name: puzzle.name, id: puzzle.id })
 if (parsed.errors.length) {
   for (const err of parsed.errors) console.error(`[import] 错误：${err}`)
@@ -219,7 +224,7 @@ if (options.verify || options.append) {
 if (!options.json) {
   if (analysis) {
     console.log(`[import] ${describeAnalysis(analysis).join(' · ')}`)
-    if (analysis.solution) console.log(`[import] 解：${analysis.solution.join('')}`)
+    if (analysis.solution) console.log(`[import] 解：${formatValues(analysis.solution)}`)
   } else {
     console.log('[import] 只做识别预览，未校验唯一解（加 --verify 校验）。')
   }

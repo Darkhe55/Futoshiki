@@ -8,6 +8,8 @@
  */
 
 import { horizontalEdgeIndex, verticalEdgeIndex } from './types'
+import { initialGrid, propagate } from './rules'
+import { countSolutions } from './solver'
 
 export interface RecognizeOverlay {
   kind: 'cell' | 'edge'
@@ -66,7 +68,21 @@ const SIGN_SIZE = 20
 const FONT_FAMILIES = ['"Segoe UI"', 'Arial', 'Helvetica', '"Times New Roman"', 'Georgia', 'Verdana']
 const FONT_WEIGHTS = ['400', '700']
 
+/** 识图支持的最小 / 最大阶数（与题面解析一致：4–15 阶） */
+const MIN_GRID_SIZE = 4
+const MAX_GRID_SIZE = 15
+
+/** 数字字形；> 9 的值额外用 A–F 表示（A=10 … F=15） */
+const DIGIT_CHARS = '123456789'
+const LETTER_CHARS = 'ABCDEF'
+
+function charToValue(ch: string): number {
+  if (ch >= 'A' && ch <= 'F') return 10 + ch.charCodeAt(0) - 65
+  return Number(ch) || 0
+}
+
 let digitTemplates: Template[] | null = null
+let digitLetterTemplates: Template[] | null = null
 let signTemplates: Template[] | null = null
 
 function grayFromImage(data: Uint8ClampedArray, width: number, height: number): Uint8Array {
@@ -278,8 +294,18 @@ function renderTemplates(chars: string[], canvasSize: number, target: number): T
   return out
 }
 
-function getDigitTemplates(): Template[] {
-  if (!digitTemplates) digitTemplates = renderTemplates('123456789'.split(''), 96, DIGIT_SIZE)
+function getDigitTemplates(includeLetters: boolean): Template[] {
+  if (includeLetters) {
+    if (!digitLetterTemplates) {
+      digitLetterTemplates = renderTemplates(
+        (DIGIT_CHARS + LETTER_CHARS).split(''),
+        96,
+        DIGIT_SIZE,
+      )
+    }
+    return digitLetterTemplates
+  }
+  if (!digitTemplates) digitTemplates = renderTemplates(DIGIT_CHARS.split(''), 96, DIGIT_SIZE)
   return digitTemplates
 }
 
@@ -404,6 +430,12 @@ const EXPECTED_HOLES: Record<string, number> = {
   '7': 0,
   '8': 2,
   '9': 1,
+  A: 1,
+  B: 2,
+  C: 0,
+  D: 1,
+  E: 0,
+  F: 0,
 }
 
 function cluster1D(values: number[], tolerance: number): number[] {
@@ -525,14 +557,18 @@ export function recognizeBoard(image: ImageData): RecognizeResult {
   let xs = cluster1D(boxes.map(cxOf), tol)
   let ys = cluster1D(boxes.map(cyOf), tol)
 
-  if (xs.length < 4 || ys.length < 4) {
-    throw new Error(`识别到的网格过小（${xs.length}×${ys.length}），至少需要 4×4`)
+  if (xs.length < MIN_GRID_SIZE || ys.length < MIN_GRID_SIZE) {
+    throw new Error(
+      `识别到的网格过小（${xs.length}×${ys.length}），至少需要 ${MIN_GRID_SIZE}×${MIN_GRID_SIZE}`,
+    )
   }
   if (xs.length !== ys.length) {
     warnings.push(`行列数不一致（${ys.length} 行 × ${xs.length} 列），按较大值推断为方阵`)
   }
   const n = Math.max(xs.length, ys.length)
-  if (n > 12) throw new Error(`网格过大（${n}×${n}），最多支持 12×12`)
+  if (n > MAX_GRID_SIZE) {
+    throw new Error(`网格过大（${n}×${n}），最多支持 ${MAX_GRID_SIZE}×${MAX_GRID_SIZE}`)
+  }
 
   const pitchX = xs.length > 1 ? (xs[xs.length - 1]! - xs[0]!) / (xs.length - 1) : seedSide
   const pitchY = ys.length > 1 ? (ys[ys.length - 1]! - ys[0]!) / (ys.length - 1) : seedSide
@@ -554,12 +590,48 @@ export function recognizeBoard(image: ImageData): RecognizeResult {
   }
 
   const overlay: RecognizeOverlay[] = []
-  const digitTpl = getDigitTemplates()
+  /** >9 阶的题图才启用字母 A–F 与两位数字模板，避免影响 4–9 阶旧图 */
+  const includeLetters = n > 9
+  const digitTpl = getDigitTemplates(includeLetters)
   const signTpl = getSignTemplates()
   const givens = new Array<number>(n * n).fill(0)
   const debugDigits: NonNullable<NonNullable<RecognizeResult['debug']>['digits']> = []
   let digitConfidenceSum = 0
   let digitCount = 0
+
+  /** 单个字形的模板匹配：返回最佳字符、分数与各字符得分 */
+  const classifyGlyph = (
+    blob: Blob,
+  ): { bestCh: string; bestScore: number; charScores: Record<string, number>; mask: Float32Array } => {
+    const mask = normalize(ink, width, height, blob, DIGIT_SIZE, true)
+    const holes = holesOf(mask, DIGIT_SIZE)
+    const charScores: Record<string, number> = {}
+    let bestCh = ''
+    let bestScore = -Infinity
+    for (const tpl of digitTpl) {
+      let score = similarity(mask, tpl.mask, DIGIT_SIZE)
+      const expected = EXPECTED_HOLES[tpl.ch]
+      if (expected !== undefined) score -= Math.min(0.18, Math.abs(holes - expected) * 0.1)
+      charScores[tpl.ch] = Math.max(charScores[tpl.ch] ?? -Infinity, score)
+      if (score > bestScore) {
+        bestScore = score
+        bestCh = tpl.ch
+      }
+    }
+    return { bestCh, bestScore, charScores, mask }
+  }
+
+  /** 取单元格内可能构成题面数字的字形（排除贴边的大概率是方框边框） */
+  const cellGlyphs = (rect: Bounds): Blob[] => {
+    const blobs = blobsIn(ink, width, height, rect)
+    return blobs.filter((b) => {
+      const bw = b.x1 - b.x0 + 1
+      const bh = b.y1 - b.y0 + 1
+      if (b.x0 <= rect.x0 + 1 || b.y0 <= rect.y0 + 1) return false
+      if (b.x1 >= rect.x1 - 1 || b.y1 >= rect.y1 - 1) return false
+      return bh >= pitch * 0.22 && bw >= pitch * 0.1 && b.area >= pitch * pitch * 0.004
+    })
+  }
 
   for (let r = 0; r < n; r++) {
     for (let c = 0; c < n; c++) {
@@ -582,6 +654,92 @@ export function recognizeBoard(image: ImageData): RecognizeResult {
         confidence: 1,
       })
 
+      if (includeLetters) {
+        // —— 大尺寸题图：支持 A–F（10–15）与两位数字（10–15）——
+        const glyphs = cellGlyphs(rect)
+        if (!glyphs.length) continue
+        const byArea = [...glyphs].sort((a, b) => b.area - a.area)
+        if (byArea.length >= 2) {
+          const bigA = byArea[0]!
+          const bigB = byArea[1]!
+          const [left, right] = bigA.x0 <= bigB.x0 ? [bigA, bigB] : [bigB, bigA]
+          const lh = left.y1 - left.y0 + 1
+          const rh = right.y1 - right.y0 + 1
+          const lw = left.x1 - left.x0 + 1
+          const rw = right.x1 - right.x0 + 1
+          const sameHeight = Math.abs(lh - rh) <= Math.max(lh, rh) * 0.35
+          const areaRatio = Math.min(bigA.area, bigB.area) / Math.max(bigA.area, bigB.area)
+          const sideBySide = left.x1 < right.x0
+          const narrow = lw <= pitch * 0.4 && rw <= pitch * 0.4
+          const gapOk = right.x0 - left.x1 - 1 <= pitch * 0.12
+          if (sameHeight && sideBySide && narrow && gapOk && areaRatio >= 0.25) {
+            const gl = classifyGlyph(left)
+            const gr = classifyGlyph(right)
+            const dl = charToValue(gl.bestCh)
+            const dr = charToValue(gr.bestCh)
+            const digitsOnly = gl.bestCh <= '9' && gr.bestCh <= '9'
+            const value = dl * 10 + dr
+            const confidence = Math.min(gl.bestScore, gr.bestScore)
+            if (digitsOnly && dl >= 1 && value >= 10 && value <= n) {
+              givens[r * n + c] = value
+              digitConfidenceSum += confidence
+              digitCount++
+              debugDigits.push({
+                r,
+                c,
+                value,
+                scores: [
+                  ...Object.entries(gl.charScores).map(([ch, score]) => ({ ch, score })),
+                  ...Object.entries(gr.charScores).map(([ch, score]) => ({ ch, score })),
+                ]
+                  .sort((a, b) => b.score - a.score)
+                  .slice(0, 8),
+                mask: `两字符：${maskAscii(gl.mask, DIGIT_SIZE)}\n${maskAscii(gr.mask, DIGIT_SIZE)}`,
+              })
+              overlay[overlay.length - 1] = {
+                ...overlay[overlay.length - 1]!,
+                label: String(value),
+                confidence,
+              }
+              if (confidence < 0.55) {
+                warnings.push(
+                  `第 ${r + 1} 行第 ${c + 1} 列数字置信度低（${confidence.toFixed(2)}），识别为 ${value}`,
+                )
+              }
+              continue
+            }
+          }
+        }
+        const blob = byArea[0]!
+        const glyph = classifyGlyph(blob)
+        const value = charToValue(glyph.bestCh)
+        digitConfidenceSum += Math.max(0, glyph.bestScore)
+        digitCount++
+        debugDigits.push({
+          r,
+          c,
+          value,
+          scores: Object.entries(glyph.charScores)
+            .map(([ch, score]) => ({ ch, score }))
+            .sort((a, b) => b.score - a.score),
+          mask: maskAscii(glyph.mask, DIGIT_SIZE),
+        })
+        if (value >= 1 && value <= n) {
+          givens[r * n + c] = value
+          overlay[overlay.length - 1] = {
+            ...overlay[overlay.length - 1]!,
+            label: String(value),
+            confidence: Math.max(0, glyph.bestScore),
+          }
+          if (glyph.bestScore < 0.55) {
+            warnings.push(
+              `第 ${r + 1} 行第 ${c + 1} 列数字置信度低（${glyph.bestScore.toFixed(2)}），识别为 ${value}`,
+            )
+          }
+        }
+        continue
+      }
+
       const blobs = blobsIn(ink, width, height, rect)
       if (!blobs.length) continue
       const blob = pickInnerBlob(blobs, rect)
@@ -590,35 +748,21 @@ export function recognizeBoard(image: ImageData): RecognizeResult {
       const bh = blob.y1 - blob.y0 + 1
       if (bh < pitch * 0.22 || bw < pitch * 0.1 || blob.area < pitch * pitch * 0.004) continue
 
-      const mask = normalize(ink, width, height, blob, DIGIT_SIZE, true)
-      const holes = holesOf(mask, DIGIT_SIZE)
-      const charScores: Record<string, number> = {}
-      let bestCh = ''
-      let bestScore = -Infinity
-      for (const tpl of digitTpl) {
-        let score = similarity(mask, tpl.mask, DIGIT_SIZE)
-        const expected = EXPECTED_HOLES[tpl.ch]
-        if (expected !== undefined) score -= Math.min(0.18, Math.abs(holes - expected) * 0.1)
-        charScores[tpl.ch] = Math.max(charScores[tpl.ch] ?? -Infinity, score)
-        if (score > bestScore) {
-          bestScore = score
-          bestCh = tpl.ch
-        }
-      }
+      const glyph = classifyGlyph(blob)
       debugDigits.push({
         r,
         c,
-        value: Number(bestCh) || 0,
-        scores: Object.entries(charScores)
+        value: charToValue(glyph.bestCh),
+        scores: Object.entries(glyph.charScores)
           .map(([ch, score]) => ({ ch, score }))
           .sort((a, b) => b.score - a.score),
-        mask: maskAscii(mask, DIGIT_SIZE),
+        mask: maskAscii(glyph.mask, DIGIT_SIZE),
       })
 
-      const confidence = Math.max(0, bestScore)
+      const confidence = Math.max(0, glyph.bestScore)
       digitConfidenceSum += confidence
       digitCount++
-      const value = Number(bestCh) || 0
+      const value = charToValue(glyph.bestCh)
       if (value >= 1 && value <= n) {
         givens[r * n + c] = value
         overlay[overlay.length - 1] = {
@@ -760,6 +904,54 @@ export function recognizeBoard(image: ImageData): RecognizeResult {
         warnings.push(`第 ${r + 1}–${r + 2} 行第 ${c + 1} 列竖向符号置信度低（${found.confidence.toFixed(2)}）`)
       }
     }
+  }
+
+  // —— 兼容题图的大小号方向约定 ——
+  // 不同题图生成器对 ∧ / ∨ 的“上小 / 上大”约定可能相反：
+  // 依次尝试 标准 / 竖向反转 / 横向反转 / 双反转，取第一个能快速解出的约定。
+  // （先 propagate 排除立即矛盾，再用小预算搜索确认可解，正常题图第一步就命中。）
+  const hCount = n * (n - 1)
+  const relationsUnder = (hFlip: boolean, vFlip: boolean): number[] => {
+    const out = new Array<number>(relations.length)
+    for (let e = 0; e < relations.length; e++) {
+      const rel = relations[e]!
+      if (!rel) {
+        out[e] = 0
+        continue
+      }
+      const flip = e < hCount ? hFlip : vFlip
+      out[e] = flip ? 3 - rel : rel
+    }
+    return out
+  }
+  const solvable = (test: number[]): boolean => {
+    if (!propagate(initialGrid(givens, n * n), test, n)) return false
+    return countSolutions(givens, test, n, 1, 4000).count > 0
+  }
+  const candidates: Array<{ h: boolean; v: boolean }> = [
+    { h: false, v: false },
+    { h: false, v: true },
+    { h: true, v: false },
+    { h: true, v: true },
+  ]
+  const chosen = candidates.find((c) => solvable(relationsUnder(c.h, c.v)))
+  if (chosen && (chosen.h || chosen.v)) {
+    const flipped = relationsUnder(chosen.h, chosen.v)
+    for (let e = 0; e < relations.length; e++) relations[e] = flipped[e]!
+    // 预览覆盖层里的箭头方向同步反转，保证所见即所得
+    for (let i = 0; i < overlay.length; i++) {
+      const item = overlay[i]!
+      if (item.kind !== 'edge') continue
+      let label = item.label
+      if (chosen.h) label = label === '<' ? '>' : label === '>' ? '<' : label
+      if (chosen.v) label = label === '^' ? 'v' : label === 'v' ? '^' : label
+      if (label !== item.label) overlay[i] = { ...item, label }
+    }
+    warnings.push(
+      `题图的${chosen.h ? '横向' : ''}${chosen.v ? '竖向' : ''}大小号方向与默认约定相反，已自动反转以保证题面有解`,
+    )
+  } else if (!chosen) {
+    warnings.push('题面在四种大小号约定下都无法快速解出，请检查识别结果或手动修正大小号')
   }
 
   const overall =

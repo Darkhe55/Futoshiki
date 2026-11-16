@@ -24,6 +24,7 @@ import {
   parsePuzzleText,
   toLibraryEntry,
 } from '../src/game/import.ts'
+import { encodeBoard } from '../src/game/types.ts'
 
 function parseArgs(argv) {
   const out = {
@@ -201,9 +202,9 @@ async function main() {
     name: puzzle.name,
     width: n,
     height: n,
-    givens: puzzle.givens.join(''),
+    givens: puzzle.givens.join(puzzle.givens.some((v) => v > 9) ? ',' : ''),
     relations: puzzle.relations.join(''),
-    board: `${puzzle.givens.join('')}|${puzzle.relations.join('')}`,
+    board: encodeBoard(puzzle.givens, puzzle.relations),
     givenCount,
     horizontal,
     vertical,
