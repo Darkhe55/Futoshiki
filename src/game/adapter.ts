@@ -45,12 +45,12 @@ const meta = {
   customIdPrefix: 'futoshiki-custom-',
   customMinW: 4,
   customMinH: 4,
-  customMaxW: 15,
-  customMaxH: 15,
+  customMaxW: 20,
+  customMaxH: 20,
   targetKind: 'cell' as const,
 }
 
-/** 点击循环：0（空）→ 1 … n；支持到 15 阶，>9 的数同样可循环选中 */
+/** 点击循环：0（空）→ 1 … n；支持到 20 阶，>9 的数同样可循环选中 */
 const VALUE_CYCLE: Array<number | null> = [
   null,
   1,
@@ -68,6 +68,11 @@ const VALUE_CYCLE: Array<number | null> = [
   13,
   14,
   15,
+  16,
+  17,
+  18,
+  19,
+  20,
 ]
 
 function edgeSign(v: number | null, dir: 'h' | 'v'): string {
@@ -86,7 +91,7 @@ const custom: CustomSupport = {
   },
   cellLabel: (v) => (v == null ? '' : String(v)),
   cellClass: (v) => (v == null ? '' : `r${v}`),
-  hint: '点击格子循环填数；点击格间符号循环：无 → < → >（竖向为 ∧ / ∨）。',
+  hint: '点击格子循环填数（1–20）；点击格间符号循环：无 → < → >（竖向为 ∧ / ∨）。尺寸 4×4–20×20（拉丁方必须正方形）。',
   edgeValueCycle: [null, 1, 2],
   edgeLabel: (v) => edgeSign(v, 'h'),
   edgeLabelFor: (v, dir) => edgeSign(v, dir),

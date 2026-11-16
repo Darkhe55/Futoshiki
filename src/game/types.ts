@@ -94,7 +94,11 @@ export function edgeCells(edge: number, n: number): { a: number; b: number } | n
  * `v2:` 前缀的逗号分隔编码，两种编码都能被 decode* 读回。
  */
 export const MIN_SIZE = 4
-export const MAX_SIZE = 15
+/**
+ * 自定义题板 / 文本导入支持的最大阶数（20 阶）。
+ * 识图导入仍只支持 4–15 阶（模板字库只到 A–F = 10–15），见 image-import.ts。
+ */
+export const MAX_SIZE = 20
 
 /** 多值编码前缀：`v2:1,0,12,...|0,1,...`（givens 与 relations 都用逗号分隔） */
 export const MULTI_VALUE_PREFIX = 'v2:'
