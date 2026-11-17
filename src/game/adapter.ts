@@ -48,6 +48,8 @@ const meta = {
   customMaxW: 20,
   customMaxH: 20,
   targetKind: 'cell' as const,
+  interactionHint:
+    '<kbd>左键</kbd> 选中格 · <kbd>数字按钮</kbd>/<kbd>1–9</kbd> 填数 · <kbd>N</kbd> 笔记 · <kbd>0</kbd>/<kbd>退格</kbd> 清除 · 题面预填不可改',
 }
 
 /** 点击循环：0（空）→ 1 … n；支持到 20 阶，>9 的数同样可循环选中 */
